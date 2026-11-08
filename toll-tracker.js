@@ -121,6 +121,15 @@
     const band = bandFor(tariff, date), raw = tariff.byClass?.[vehicleCode()]?.[band];
     return Number.isFinite(raw) ? { amount: raw * (tariff.type === 'per_km' ? Number(pair.lengthKm || 1) : 1), band: band || 'normal', source: tariff.source || '' } : null;
   }
+  // La base entrega categoría física, no modalidad confirmada de pago.
+  // Solo marcar manual cuando la fuente lo indique expresamente; los demás
+  // cobros se presentan como TAG automático según la preferencia del usuario.
+  function paymentLabel(point) {
+    const text = [point.payment, point.paymentMethod, point.collection, point.modality, point.payment_type]
+      .filter(Boolean).join(' ').toLowerCase();
+    return /manual|cash|efectivo/.test(text) ? 'Manual' : 'TAG automático';
+  }
+  window.rastroPaymentLabel = paymentLabel;
   window.rastroPriceFor = priceFor;
   window.rastroPriceForPair = priceForPair;
   window.rastroVehicleCode = vehicleCode;
@@ -136,7 +145,7 @@
     const sum = tollTotal.reduce((n, p) => n + (p.amount || 0), 0);
     $('tollSum').textContent = fmtCLP(sum);
     list.className = '';
-    list.innerHTML = tollTotal.slice().reverse().map(p => `<div class="toll-item"><span class="ti"><strong>${esc(p.name)}</strong><small>${new Date(p.at).toLocaleString('es-CL')} · ${esc(p.vehicle)} · señal ±${esc(p.accuracy)} m${p.review ? ' · revisar' : ''}${p.band ? ' · ' + esc(p.band) : ''}</small></span><b>${p.amount == null ? 'Revisar' : fmtCLP(p.amount)}</b><button class="remove-toll" data-id="${esc(p.id)}" aria-label="Eliminar este paso">×</button></div>`).join('');
+    list.innerHTML = tollTotal.slice().reverse().map(p => `<div class="toll-item"><span class="ti"><strong>${esc(p.name)} · ${esc(p.payment || 'TAG automático')}</strong><small>${new Date(p.at).toLocaleString('es-CL')} · ${esc(p.vehicle)} · señal ±${esc(p.accuracy)} m${p.review ? ' · revisar' : ''}${p.band ? ' · ' + esc(p.band) : ''}</small></span><b>${p.amount == null ? 'Revisar' : fmtCLP(p.amount)}</b><button class="remove-toll" data-id="${esc(p.id)}" aria-label="Eliminar este paso">×</button></div>`).join('');
     list.querySelectorAll('.remove-toll').forEach(b => b.onclick = () => { tollTotal = tollTotal.filter(p => p.id !== b.dataset.id); persist(); renderTolls(); });
   }
   function recordPass(point, fix, d, price, label = '', highConfidence = false) {
@@ -144,7 +153,7 @@
     const event = {
       id: `${point.id}-${at.getTime()}`, pointId: point.id, name: label || point.name,
       at: at.toISOString(), amount: price?.amount == null ? null : Math.round(price.amount),
-      band: price?.band || '', source: price?.source || '', vehicle: vehicleCode(),
+      band: price?.band || '', source: price?.source || '', vehicle: vehicleCode(), payment: paymentLabel(point),
       accuracy: fix.coords.accuracy || 0, distance: Math.round(d), review: !highConfidence
     };
     tollTotal.push(event); if (running && Number.isFinite(event.amount)) { currentTripTolls += event.amount; window.rastroCurrentTripTolls = currentTripTolls; window.rastroUpdateLiveCosts?.(); } persist(); renderTolls();
